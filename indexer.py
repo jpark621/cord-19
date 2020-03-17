@@ -1,4 +1,9 @@
+import json
 import os
+import pprint
+
+import utils
+from text_processing_utils import get_spans_and_words
 
 FILE_IGNORE = set(['.DS_Store'])
 VALID_FILE_EXTENSIONS = set(['json'])
@@ -21,45 +26,65 @@ class InvertedIndex():
 					documents.append(os.path.join(dirpath, filename))
 
 		# Get postings
-		postings = {}
+		title_postings = {}
+		abstract_postings = {}
+		body_postings = {}
 		for document in documents:
-			with open(document) as f:
-				lines_of_words = self._parse_document(f.read())
-				for i, words in enumerate(lines_of_words):
-					for word in words:
-						if word in postings and document in postings[word]:
-							postings[word][document].append(i)
-						else:
-							postings[word] = {document: [i]}
+			doc_dict = utils.load_file(document)
+			biorxiv_document = IndexableDocument(doc_dict)
+
+			# Index title, abstract, and body
+			for postings_i, text in [(title_postings, biorxiv_document.title),
+							  		(abstract_postings, biorxiv_document.abstract),
+							  		(body_postings, biorxiv_document.body)]:
+				for span, word in get_spans_and_words(text):
+					if word in postings_i and document in postings_i[word]:
+						postings_i[word][document].append(span)
+					else:
+						postings_i[word] = {document: [span]}
 
 		self.documents = documents
-		self.postings = postings
+		self.board = {   						# a board contains several postings
+			'title_postings': title_postings,
+			'abstract_postings': abstract_postings,
+			'body_postings': body_postings
+		}
 
-		print("Number of unique vocabulary words: %s" % len(self.postings))
-
-	def _parse_document(self, document_contents):
-		"""Parses document contents.
-
-		Args:
-			document_contents (str): contents of a document
-
-		Returns:
-			parsed_contents (str): list of parsed words
-		"""
-		document_contents = document_contents.replace('(', ' ')
-		document_contents = document_contents.replace(')', ' ')
-		document_contents = document_contents.replace(':', ' ')
-		
-		lines = document_contents.split('\n')
-		lines_of_words = [line.split() for line in lines]
-		return lines_of_words
+		for postings_name, postings_i in self.board.items():
+			print("Number of unique vocabulary words in %s: %s" % (postings_name, len(postings_i)))
 
 	def search(self, word):
-		if word in self.postings:
-			return self.postings[word]
-		return None
+		result = {}
+		for postings_name, postings in self.board.items():
+			if word in postings:
+				result[postings_name] = postings[word]
+			else:
+				result[postings_name] = None
+		return result
 
-filepath = '/Users/jinpark/data/cord19-dataset/biorxiv_medrxiv/biorxiv_medrxiv-subset'
-inverted_index = InvertedIndex(filepath)
-print("Search 'Terrance': %s" % inverted_index.search('Comparisons'))
 
+class IndexableDocument():
+	def __init__(self, doc_dict):
+		self.id = doc_dict['paper_id']
+		self.title = doc_dict['metadata']['title']
+		self.authors = utils.format_authors(doc_dict['metadata']['authors'])
+		self.authors_with_affiliation = utils.format_authors(doc_dict['metadata']['authors'], with_affiliation=True)
+		self.abstract = utils.format_body(doc_dict['abstract'])
+		self.body = utils.format_body(doc_dict['body_text'])
+		self.bib_entries = utils.format_bib(doc_dict['bib_entries'])
+		self.original_item = json.loads(json.dumps(doc_dict))
+
+	def __repr__(self):
+		return pprint.pformat({
+			'id': self.id,
+			'title': self.title,
+			'authors': self.authors,
+			'abstract': self.abstract,
+			'body': self.body
+		})
+
+
+if __name__ == "__main__":
+	filepath = '/Users/jinpark/data/cord19-dataset/biorxiv_medrxiv/biorxiv_medrxiv-subset'
+	inverted_index = InvertedIndex(filepath)
+	print("Search 'antibody': %s" % inverted_index.search('antibody'))
