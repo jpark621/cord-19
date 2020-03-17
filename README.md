@@ -8,5 +8,6 @@ The question is broken down into several questions of interest.
 
 # Todos
 - [ ] Range of incubation periods
-- [ ] Prevalence of asymptomatic sheddingn and transmission
+- [ ] Prevalence of asymptomatic sheddinng and transmission
 - [ ] Seasonality of transmission
+
